@@ -34,6 +34,7 @@ cp .env.example .env
 | `DISCORD_WEBHOOK` | Discord webhook URL for notifications | Yes |
 | `RESEND_API_KEY` | Resend API key for sending emails | Yes |
 | `MY_EMAIL` | Sender email address (must be verified in Resend) | Yes |
+| `TEST_EMAIL` | Your email for test sends via Discord | Yes |
 | `CRON_SCHEDULE` | Cron expression for check frequency (default: `0 */6 * * *`) | No |
 | `SERVER_URL` | Override server URL (auto-detected on Zeabur) | No |
 
