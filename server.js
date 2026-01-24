@@ -57,11 +57,30 @@ setInterval(() => {
     }
 }, 60 * 60 * 1000); // Every hour
 
+// --- Parse Target URLs ---
+function getTargetUrls() {
+    const urlsEnv = process.env.TARGET_URLS || process.env.TARGET_URL || '';
+    return urlsEnv.split(',').map(url => url.trim()).filter(Boolean);
+}
+
 // --- Site Monitor ---
 async function checkScamSite() {
-    console.log(`[${new Date().toLocaleString()}] Checking target site...`);
+    const targets = getTargetUrls();
+    if (targets.length === 0) {
+        console.log('No target URLs configured.');
+        return;
+    }
+
+    console.log(`[${new Date().toLocaleString()}] Checking ${targets.length} target site(s)...`);
+
+    for (const target of targets) {
+        await checkSingleSite(target);
+    }
+}
+
+async function checkSingleSite(target) {
     try {
-        const addresses = await dns.resolve4(process.env.TARGET_URL);
+        const addresses = await dns.resolve4(target);
         const ip = addresses[0];
 
         // Perform Whois lookup
@@ -70,32 +89,34 @@ async function checkScamSite() {
         const orgName = whoisData.orgName || 'Unknown Provider';
 
         if (abuseEmail) {
-            await sendDiscordAlert(ip, orgName, abuseEmail);
-            console.log(`Target alive: ${ip}, Discord notified.`);
+            await sendDiscordAlert(target, ip, orgName, abuseEmail);
+            console.log(`[${target}] Alive at ${ip}, Discord notified.`);
+        } else {
+            console.log(`[${target}] Alive at ${ip}, but no abuse email found.`);
         }
     } catch (error) {
         if (error.code === 'ENOTFOUND') {
-            console.log(`Target ${process.env.TARGET_URL} is offline.`);
+            console.log(`[${target}] Offline.`);
         } else {
-            console.error('Check failed:', error.message);
+            console.error(`[${target}] Check failed:`, error.message);
         }
     }
 }
 
 // --- Discord Notification ---
-async function sendDiscordAlert(ip, orgName, abuseEmail) {
+async function sendDiscordAlert(target, ip, orgName, abuseEmail) {
     // Generate one-time token, data stored server-side
     const token = generateReportToken({
         email: abuseEmail,
         ip: ip,
-        target: process.env.TARGET_URL
+        target: target
     });
 
     const reportLink = `${SERVER_URL}/send-report?token=${token}`;
     const testToken = generateReportToken({
         email: process.env.TEST_EMAIL,
         ip: ip,
-        target: process.env.TARGET_URL
+        target: target
     });
     const testLink = `${SERVER_URL}/send-report?token=${testToken}`;
 
@@ -104,7 +125,7 @@ async function sendDiscordAlert(ip, orgName, abuseEmail) {
             title: "Phisherman Alert",
             color: 0xE74C3C,
             fields: [
-                { name: "Target", value: `\`${defangUrl(process.env.TARGET_URL)}\``, inline: false },
+                { name: "Target", value: `\`${defangUrl(target)}\``, inline: false },
                 { name: "IP", value: `\`${ip}\``, inline: true },
                 { name: "Provider", value: orgName, inline: true },
                 { name: "Abuse Email", value: abuseEmail, inline: false }
@@ -178,7 +199,9 @@ const PORT = process.env.PORT || 3000;
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 */6 * * *';
 
 app.listen(PORT, () => {
+    const targets = getTargetUrls();
     console.log(`Phisherman running on port ${PORT}`);
+    console.log(`Monitoring ${targets.length} target(s): ${targets.join(', ')}`);
     console.log(`Cron schedule: ${CRON_SCHEDULE}`);
     cron.schedule(CRON_SCHEDULE, checkScamSite);
     // Initial check on startup
